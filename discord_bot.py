@@ -37,19 +37,25 @@ vectorstore = FAISS.from_documents(docs, embeddings)
 retriever = vectorstore.as_retriever()
 
 prompt = PromptTemplate.from_template(
-    """You are an assistant for question-answering tasks. 
-Use the following pieces of retrieved context to answer the question. 
-If you don't know the answer, just say that you don't know. 
-Answer in Korean.
+    """
+    You are an assistant specialized in answering questions about 상명대학교-related Course registration, but you also engage in casual daily conversations naturally.
 
-Chat History: {chat_history}
-Question: {question} 
-Context: {context} 
+    Guidelines:
+    - You have the knowledge of a general adult and natural conversational ability in Korean.
+    - If the question is school-related and not found in the provided context, reply with:
+      "죄송하지만 해당 내용은 제가 알 수 있는 정보에 포함되어 있지 않습니다."
+    - Always remember previous conversations when answering questions.
 
-Answer:"""
+    Chat History: {chat_history}
+    Question: {question}
+    Context: {context}
+
+    Answer:
+    """
 )
 
-llm = ChatOpenAI(temperature=0, model_name="gpt-4o")
+
+llm = ChatOpenAI(temperature=0.4, model_name="gpt-4o")
 
 user_memories = {}
 user_qa_chains = {}
@@ -121,7 +127,7 @@ async def on_message(message):
                 await message.channel.send("요청을 처리하는 동안 오류가 발생했습니다.")
 
 @bot.command()
-async def clear_history(ctx):
+async def clear(ctx): #clear_history에서 이름을 직관적이게 바꿔봤다
     user_id = str(ctx.author.id)
     if user_id in user_memories:
         del user_memories[user_id]
