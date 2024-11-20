@@ -5,7 +5,7 @@ import os
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
-from langchain_community.vectorstores import FAISS
+from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
@@ -25,15 +25,21 @@ intents.presences = False
 intents.message_content = True
 
 # PDF 파일 로드 및 처리
-pdf_path = '/usr/workspace/gyogyng_curriculum_2024.pdf'
-loader = PyPDFLoader(pdf_path)
-documents = loader.load()
+# pdf_path = '/usr/workspace/gyogyng_curriculum_2024.pdf'
+# loader = PyPDFLoader(pdf_path)
+# documents = loader.load()
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-docs = text_splitter.split_documents(documents)
+# docs = text_splitter.split_documents(documents)
 
-embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-vectorstore = FAISS.from_documents(docs, embeddings)
+embeddings = OpenAIEmbeddings(model="text-embedding-3-large") 
+
+vectorstore = Chroma(
+    persist_directory="/usr/workspace/sample_2018",
+    embedding_function=embeddings,
+    collection_name="excel_embedding"  # ChromaDB에서 생성한 collection 이름과 동일하게 설정
+)
+
 retriever = vectorstore.as_retriever()
 
 prompt = PromptTemplate.from_template(
