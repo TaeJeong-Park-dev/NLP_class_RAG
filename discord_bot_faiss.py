@@ -4,10 +4,8 @@ from dotenv import load_dotenv
 import os
 import asyncio
 
-# 기존 import문들을 다음과 같이 변경
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.chat_models import ChatOpenAI
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -15,8 +13,11 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.prompts import PromptTemplate
 
+from langchain.prompts.few_shot import FewShotPromptTemplate
+
 load_dotenv()
 
+# Environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
@@ -25,51 +26,95 @@ intents.typing = False
 intents.presences = False
 intents.message_content = True
 
-# PDF 파일 로드 및 처리 부분 주석 처리
-pdf_path = '/usr/workspace/졸업기준학점_2018.pdf'  # 실제 PDF 파일 경로로 변경하세요
-loader = PyPDFLoader(pdf_path)
-documents = loader.load()
-
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-docs = text_splitter.split_documents(documents)
-
+# Embeddings
 embeddings = OpenAIEmbeddings(model="text-embedding-3-large", openai_api_key=OPENAI_API_KEY)
 
-# FAISS 벡터 스토어 생성 및 저장 부분 주석 처리
-persist_directory = "/usr/workspace/sample_2018"
-vectorstore = FAISS.from_documents(docs, embeddings)
-vectorstore.save_local(persist_directory)
-print(f"벡터 데이터베이스가 {persist_directory} 디렉토리에 저장되었습니다.")
-
-# 저장된 FAISS 벡터 스토어 로드
+# FAISS vector store load
+persist_directory = "/usr/workspace/sample_2022_faiss"
 vectorstore = FAISS.load_local(
-    persist_directory, 
-    embeddings,
-    allow_dangerous_deserialization=True  # 로컬에서 생성한 신뢰할 수 있는 데이터인 경우
+    folder_path=persist_directory,
+    embeddings=embeddings,
+    allow_dangerous_deserialization=True
 )
 retriever = vectorstore.as_retriever()
 
-prompt = PromptTemplate.from_template(
-    """
-    너는 상명대학교 수강신청에 관한 질문에 답변하는 도우미야. 또한 일상적인 대화도 자연스럽게 이어나갈 수 있어.
+examples = [
+    {
+        "question": "식물식품공학과 교양 몇 학점 들어야 돼?",
+        "answer": """
+식물식품공학과에서는 교필 11학점, 교선 22학점으로 총 33학점 이수해야 돼!
+"""
+    },
+    {
+        "question": "전자공학과 전공 몇 학점 들어야 돼?",
+        "answer": """
+전자공학과는 학기 0학점, 전필 0학점, 전심 15학점, 전선 54학점으로 총 74학점 이수해야 돼!
+"""
+    },
+    {
+        "question": "중국어권지역학전공은 전공 몇 학점 들어야 돼?",
+        "answer": """
+중국어권지역학전공은 학기 12학점, 전필 0학점, 전심 15학점, 전선 33학점으로 총 60학점 이수해야 돼!
+"""
+    }
+]
 
-    **컨텍스트 정보**:
-    - 이 컨텍스트는 상명대학교의 학과별로 졸업요건에 대한 내용을 포함하고 있어.
-
-    지침:
-    - 일반 성인의 지식을 가지고 있고, **무조건 한국어로** 자연스럽게 대화해.
-    - **친숙한 어투로 반말로** 답변해.
-    - 학교관련 질문을 하면 무조건 컨텍스트 기반으로 답변을 해. 거기서 답변 못하겠으면 모르겠다고 사과하고.
-    - 항상 이전 대화를 기억하고 질문에 답변해.
-
-    대화 기록: {chat_history}
-    질문: {question}
-    컨텍스트: {context}
-
-    답변:
-    """
+example_prompt = PromptTemplate(
+    input_variables=["question", "answer"],
+    template="Question: {question}\n{answer}"
 )
 
+# Combined Prompt
+prompt = FewShotPromptTemplate(
+    examples=examples,
+    example_prompt=example_prompt,
+    prefix="""
+너는 상명대학교 수강신청에 관한 질문에 답변하는 도우미야. 또한 일상적인 대화도 자연스럽게 이어나갈 수 있어.
+
+**컨텍스트 정보**:
+- 이 컨텍스트는 상명대학교의 학과별로 졸업요건에 대한 내용을 포함하고 있어.
+
+지침:
+- 일반 성인의 지식을 가지고 있고, **무조건 한국어로** 자연스럽게 대화해.
+- **친숙한 어투로 반말로** 답변해.
+- 학교 관련 질문을 하면 무조건 컨텍스트 기반으로 답변해. 거기서 답변 못 하겠으면 모르겠다고 사과하고.
+- 항상 이전 대화를 기억하고 질문에 답변해.
+
+""",
+    suffix="""
+대화 기록: {chat_history}
+질문: {question}
+컨텍스트: {context}
+
+답변:
+""",
+    input_variables=["question", "context", "chat_history"]
+)
+
+
+# Prompt setup
+# prompt = PromptTemplate.from_template(
+#     """
+#     너는 상명대학교 수강신청에 관한 질문에 답변하는 도우미야. 또한 일상적인 대화도 자연스럽게 이어나갈 수 있어.
+
+#     **컨텍스트 정보**:
+#     - 이 컨텍스트는 상명대학교의 학과별로 졸업요건에 대한 내용을 포함하고 있어.
+
+#     지침:
+#     - 일반 성인의 지식을 가지고 있고, **무조건 한국어로** 자연스럽게 대화해.
+#     - **친숙한 어투로 반말로** 답변해.
+#     - 학교관련 질문을 하면 무조건 컨텍스트 기반으로 답변을 해. 거기서 답변 못하겠으면 모르겠다고 사과하고.
+#     - 항상 이전 대화를 기억하고 질문에 답변해.
+
+#     대화 기록: {chat_history}
+#     질문: {question}
+#     컨텍스트: {context}
+
+#     답변:
+#     """
+# )
+
+# Language model setup
 llm = ChatOpenAI(temperature=0.4, model_name="gpt-4o", openai_api_key=OPENAI_API_KEY)
 
 user_memories = {}
